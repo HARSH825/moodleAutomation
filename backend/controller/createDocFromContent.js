@@ -115,7 +115,8 @@ async function createDocumentFromContent(content, assignment, outputPath,name,ui
 
     const buffer = await Packer.toBuffer(doc);
     await fs.writeFile(outputPath, buffer);
-
+    //need to store file to some external cloud storage or database and return the link to the user
+    // For now, we are just returning the file path
     return outputPath;
   } catch (error) {
     console.error(`Error creating document: ${error.message}`);
