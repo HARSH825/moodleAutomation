@@ -12,8 +12,8 @@ const dataDir = path.join(__dirname, 'data'); //overall
 const docsDir = path.join(dataDir, 'docs');  //gen documents 
 
 async function genDocController(req,res){
-    const { username ,password,NAME,UID } = req.body;
-  
+    const { username ,password, NAME, UID , key} = req.body;
+    console.log("key : "+key);
   try {
     
     await fs.mkdir(docsDir, { recursive: true });
@@ -71,6 +71,7 @@ async function genDocController(req,res){
                 if (file.fileName.endsWith('.docx')) {
                   const result = await mammoth.extractRawText({path: downloadedFilePath});
                   fileContent = result.value;
+                  
                   console.log(` Extracted content from: ${file.fileName}`);
                 } else {
                   fileContent = `[File available: ${file.fileName}]`;
@@ -81,17 +82,22 @@ async function genDocController(req,res){
               }
             }
           }
+
+          // console.log(` File content: ${fileContent}`);
+
           
+          const assignmentInfo = assignment;
+          assignmentInfo.fileContent = fileContent || assignmentInfo.fileContent || '';
+          
+          // console.log(` Assignment info: ${JSON.stringify(assignmentInfo)}`);
           // generate content 
           console.log(` Generating content for: ${assignment.title}`);
-          const content = await generateAssignmentContent({
-            title: assignment.title,
-            fullTitle: assignment.fullTitle || assignment.title,
-            type: assignment.type,
-            fileContent ,
-            NAME:NAME,
-            UID:UID
-          });
+          const content = await generateAssignmentContent(
+            assignmentInfo,
+            NAME,
+            UID,
+            key
+          );
           
           // create doc
           console.log(` Creating document: ${docPath}`);
