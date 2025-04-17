@@ -1,9 +1,4 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
-
-const apiKey = process.env.GEMINI_API_KEY || "AIzaSyDNYonVVi6OSNeolTLygmQGWAi80o_ldkQ";
-
-const genAI = new GoogleGenerativeAI(apiKey);
-
 // Sanitize input to avoid injection or formatting issues
 const sanitize = (str) => str?.replace(/[`$<>]/g, '').trim() || '';
 
@@ -80,9 +75,28 @@ Do not use markdown, do not include extra formatting. Only include clean, plain 
  * @param {Object} assignmentInfo - Info like title, fullTitle, and fileContent.
  * @returns {Promise<string>} - Clean, sectioned plain text content.
  */
-async function generateAssignmentContent(assignmentInfo ,NAME , UID) {
+
+
+
+
+async function generateAssignmentContent(assignmentInfo ,NAME , UID , KEY) {
+  if(!KEY){
+    KEY="AIzaSyD81UuGcWJh6-0e6Eyxo1_kEnBWJNQFQoo";
+    console
+  }
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-pro' });
+
+    // console.log("API KEY "+KEY);
+    const genAI = new GoogleGenerativeAI(KEY);
+
+    // console.log("===========================================================");
+    // console.log(" ASSINGMENT INFO "+assignmentInfo);
+    // console.log("File contnent : "+assignmentInfo.fileContent);
+    // console.log("File title : "+assignmentInfo.title);
+    // console.log("File full title : "+assignmentInfo.fullTitle);
+    // console.log("File name : "+assignmentInfo.fileName);
+    // console.log("================================================================");
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
     // Sanitize and trim file content
     const rawContent = sanitize(assignmentInfo.fileContent || '');
