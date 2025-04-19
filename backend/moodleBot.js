@@ -1,7 +1,7 @@
 import { chromium } from 'playwright';
 
 export async function loginToMoodle(username, password) {
-  const browser = await chromium.launch({ headless: false });
+  const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage();
   const moodleURL = 'https://moodle.spit.ac.in/login/index.php';
   
