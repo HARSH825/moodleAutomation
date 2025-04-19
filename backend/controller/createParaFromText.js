@@ -1,6 +1,6 @@
 import { Paragraph, TextRun } from "docx";
 
-// Helper to convert lines with **bold** to proper TextRuns
+// convert **bold** to proper TextRuns
 function parseMarkdownToTextRuns(line) {
   const regex = /\*\*(.*?)\*\*/g;
   const runs = [];

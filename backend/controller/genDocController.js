@@ -5,11 +5,12 @@ import mammoth from 'mammoth';
 import generateAssignmentContent from './genContent.js';
 import createDocumentFromContent from './createDocFromContent.js';
 import downloadFile from './downloadFile.js';
+import { getJsonFromSupabase } from './supaBaseManager.js';
 
-// Environment
-const __dirname = path.dirname(fileURLToPath(import.meta.url)); // Overall
-const dataDir = path.join(__dirname, 'data'); // Overall 
-const docsDir = path.join(dataDir, 'docs'); // Gen documents 
+// environment
+const __dirname = path.dirname(fileURLToPath(import.meta.url)); 
+const dataDir = path.join(__dirname, 'data'); 
+const docsDir = path.join(dataDir, 'docs'); 
 
 async function genDocController(req, res) {
     const { username, NAME, UID, key } = req.body;
@@ -18,17 +19,19 @@ async function genDocController(req, res) {
     try {
         await fs.mkdir(docsDir, { recursive: true });
         
-        // Read the all-non-submitted file
-        const allNonSubmittedPath = path.join(dataDir, `all-non-submitted-${username}.json`);
-        const allNonSubmittedData = await fs.readFile(allNonSubmittedPath, 'utf-8');
-        const nonSubmittedByCourse = JSON.parse(allNonSubmittedData);
+        const allNonSubmittedFilename = `all-non-submitted-${username}.json`;
+        const { data: nonSubmittedByCourse, error: nonSubError } = await getJsonFromSupabase(allNonSubmittedFilename);
+        
+        if (nonSubError) {
+            throw new Error(`Failed to retrieve non-submitted assignments from Supabase: ${nonSubError}`);
+        }
         
         console.log(` Starting document generation for user: ${username}`);
         
         const results = {};
         const generatedDocs = [];
         
-        // Process each course
+        //each course
         for (const courseId in nonSubmittedByCourse) {
             const courseData = nonSubmittedByCourse[courseId];
             const courseDirPath = path.join(docsDir, courseId);
@@ -41,32 +44,30 @@ async function genDocController(req, res) {
                 documents: []
             };
             
-            // Process each assignment
+            // each assignment
             for (const assignment of courseData.assignments) {
                 console.log(` Processing assignment: ${assignment.title}`);
                 
-                // Create filename from assignment title
                 const safeTitle = assignment.title
                     .replace(/[^a-z0-9]/gi, '_')
                     .replace(/_+/g, '_')
                     .substring(0, 50);
                 
                 try {
-                    // If files exist, download them
+                    //file downld
                     let fileContent = null;
                     let downloadedFilePath = null;
                     
                     if (assignment.relatedFiles && assignment.relatedFiles.length > 0) {
-                        const file = assignment.relatedFiles[0]; // First file
+                        const file = assignment.relatedFiles[0]; 
                         const tempFilePath = path.join(courseDirPath, `temp_${file.fileName}`);
                         
                         console.log(` Downloading file: ${file.fileName}`);
-                        // Note: Removed password parameter as we now use stored cookies
                         downloadedFilePath = await downloadFile(file.fileUrl, tempFilePath, username);
                         
                         if (downloadedFilePath) {
                             try {
-                                // Extract text from the file
+                               
                                 if (file.fileName.endsWith('.docx')) {
                                     const result = await mammoth.extractRawText({ path: downloadedFilePath });
                                     fileContent = result.value;
@@ -85,7 +86,7 @@ async function genDocController(req, res) {
                     const assignmentInfo = assignment;
                     assignmentInfo.fileContent = fileContent || assignmentInfo.fileContent || '';
                     
-                    // Generate content
+                    // genCOntent
                     console.log(` Generating content for: ${assignment.title}`);
                     const content = await generateAssignmentContent(
                         assignmentInfo,
@@ -94,11 +95,11 @@ async function genDocController(req, res) {
                         key
                     );
                     
-                    // Create doc
+                    // create doc
                     console.log(` Creating document: ${assignment.title}`);
                     const url = await createDocumentFromContent(content, assignment, NAME, UID);
                     
-                    // Clean temp downloaded files
+                    
                     if (downloadedFilePath) {
                         try {
                             await fs.unlink(downloadedFilePath);

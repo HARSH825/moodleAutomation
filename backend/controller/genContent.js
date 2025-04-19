@@ -1,18 +1,9 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
-// Sanitize input to avoid injection or formatting issues
+//avoid injection or formatting issues
 const sanitize = (str) => str?.replace(/[`$<>]/g, '').trim() || '';
 
-// Limit the file content size to avoid exceeding token limits
-const MAX_CONTENT_LENGTH = 10000;
+const MAX_CONTENT_LENGTH = 15000;
 
-/**
- * Builds a structured prompt for Gemini based on assignment info
- * @param {Object} param0
- * @param {string} param0.title
- * @param {string} param0.fullTitle
- * @param {string} param0.fileContent
- * @returns {string}
- */
 function buildPrompt({ title, fullTitle, fileContent , NAME, UID }) {
   return `
 You are an expert academic writer. Generate a detailed and professional assignment/experiment file for an engineering student.
@@ -70,14 +61,6 @@ Do not use markdown, do not include extra formatting. Only include clean, plain 
 `.trim();
 }
 
-/**
- * Generates a structured assignment text for DOCX creation.
- * @param {Object} assignmentInfo - Info like title, fullTitle, and fileContent.
- * @returns {Promise<string>} - Clean, sectioned plain text content.
- */
-
-
-
 
 async function generateAssignmentContent(assignmentInfo ,NAME , UID , KEY) {
   if(!KEY){
@@ -114,7 +97,7 @@ async function generateAssignmentContent(assignmentInfo ,NAME , UID , KEY) {
     });
 
     // 5 second delay
-    await new Promise(resolve => setTimeout(resolve, 5000));
+    await new Promise(resolve => setTimeout(resolve, 2000));
 
     const result = await model.generateContent(prompt);
     const response = await result.response;

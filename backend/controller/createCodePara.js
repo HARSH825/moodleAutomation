@@ -1,8 +1,4 @@
 import { Paragraph, TextRun } from "docx";
-
-/**
- * Converts code string into formatted Paragraphs with monospace font.
- */
 function createCodeParagraphs(code) {
   if (!code?.trim()) {
     return [new Paragraph("No code implementation required for this assignment.")];

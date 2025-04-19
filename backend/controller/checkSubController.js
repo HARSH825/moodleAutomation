@@ -1,9 +1,9 @@
 import { chromium } from 'playwright';
-import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import ensureDataDir from './ensureDataDirectory.js';
 import { getCookiesFromSupabase } from './cookieManager.js';
+import { saveJsonToSupabase, getJsonFromSupabase } from './supaBaseManager.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url)); 
 const dataDir = path.join(__dirname, 'data'); 
@@ -13,24 +13,26 @@ async function checkSubController(req, res) {
       
     let browser;
     try {
-        await ensureDataDir();
+        await ensureDataDir(); //for fallback
         
-        // Get cookies from Supabase instead of local file
+        // cookies
         const { cookies, error: cookieError } = await getCookiesFromSupabase(username);
         if (cookieError) {
             throw new Error(`Failed to retrieve cookies: ${cookieError}`);
         }
         
-        // load all experiments
-        const allExperimentsPath = path.join(dataDir, `all-experiments-${username}.json`);
-        const allExperimentsData = await fs.readFile(allExperimentsPath, 'utf-8');
-        const allExperiments = JSON.parse(allExperimentsData);
+        // all exp
+        const allExperimentsFilename = `all-experiments-${username}.json`;
+        const { data: allExperiments, error: expError } = await getJsonFromSupabase(allExperimentsFilename);
         
-        browser = await chromium.launch({ headless: false });
+        if (expError) {
+            throw new Error(`Failed to retrieve experiments: ${expError}`);
+        }
+        
+        browser = await chromium.launch({ headless: true });
         const context = await browser.newContext();
         await context.addCookies(cookies);
         
-        // obj to store nonsubmitted assignments by courseID
         const nonSubmittedAssignments = {};
         
         for (const courseId in allExperiments) {
@@ -45,7 +47,7 @@ async function checkSubController(req, res) {
             for (const assignment of assignments) {
                 console.log(`  ⏳ Checking assignment: ${assignment.title}`);
                 //delay
-                await new Promise(resolve => setTimeout(resolve, 2000));
+                // await new Promise(resolve => setTimeout(resolve, 2000));
                 
                 const page = await context.newPage();
                 try {
@@ -58,10 +60,9 @@ async function checkSubController(req, res) {
                         await page.waitForTimeout(1000); //for the content to expand
                     }
                     
-                    // try multiple selectors for submission status
                     let submissionStatus = null;
                     
-                    // first selector - specific to submission status table row
+                    // first selector 
                     submissionStatus = await page.evaluate(() => {
                         const rows = document.querySelectorAll('.submissionstatustable tr');
                         for (const row of rows) {
@@ -76,10 +77,9 @@ async function checkSubController(req, res) {
                         return null;
                     });
                     
-                    // try broader selector
+                    // broaderselector
                     if (!submissionStatus) {
                         submissionStatus = await page.evaluate(() => {
-                            // look for any table that might contain submission info
                             const tables = document.querySelectorAll('table.generaltable');
                             for (const table of tables) {
                                 const rows = table.querySelectorAll('tr');
@@ -97,10 +97,9 @@ async function checkSubController(req, res) {
                         });
                     }
                     
-                    // try more general approach
+                    // general selector
                     if (!submissionStatus) {
                         submissionStatus = await page.evaluate(() => {
-                            // look for text content containing submission status info
                             const submissionText = Array.from(document.querySelectorAll('*'))
                                 .find(element => 
                                     element.textContent?.includes('Submission status') &&
@@ -112,9 +111,9 @@ async function checkSubController(req, res) {
                         });
                     }
                     
-                    console.log(`    📊 Submission status: "${submissionStatus || 'Not found'}"`);
+                    console.log(`Submission status: "${submissionStatus || 'Not found'}"`);
                     
-                    // file URLs
+                    // file URLS
                     const relatedFiles = await page.evaluate(() => {
                         const fileElements = document.querySelectorAll('.fileuploadsubmission a');
                         return Array.from(fileElements).map(el => {
@@ -129,7 +128,6 @@ async function checkSubController(req, res) {
                     let alternativeFiles = [];
                     if (relatedFiles.length === 0) {
                         alternativeFiles = await page.evaluate(() => {
-                            // Try to find attachments in intro section
                             const attachmentElements = document.querySelectorAll('.mod-assign-intro-attachments a');
                             const results = Array.from(attachmentElements).map(el => {
                                 return {
@@ -138,7 +136,7 @@ async function checkSubController(req, res) {
                                 };
                             });
                             
-                            // still no files, try a more general approach
+                            // still no files
                             if (results.length === 0) {
                                 const allLinks = document.querySelectorAll('a[href*="pluginfile.php"]');
                                 return Array.from(allLinks)
@@ -199,23 +197,37 @@ async function checkSubController(req, res) {
                 assignments: nonSubmitted
             };
             
-            // save non-submitted assignments for this course
-            const nonSubmittedPath = path.join(dataDir, `non-submitted-${username}-course-${courseId}.json`);
-            await fs.writeFile(nonSubmittedPath, JSON.stringify(nonSubmittedAssignments[courseId], null, 2));
-            console.log(` Non-submitted assignments saved to: ${nonSubmittedPath}`);
+            // save non-sub to supa
+            const nonSubmittedFilename = `non-submitted-${username}-course-${courseId}.json`;
+            const { success: nonSubSaved, error: nonSubError } = await saveJsonToSupabase(
+                nonSubmittedFilename, 
+                nonSubmittedAssignments[courseId]
+            );
+            
+            if (!nonSubSaved) {
+                console.error(`Error saving non-submitted assignments to Supabase: ${nonSubError}`);
+            }
+            console.log(` Non-submitted assignments saved to Supabase: ${nonSubmittedFilename}`);
         }
         
-        // save all non-submitted assignments
-        const allNonSubmittedPath = path.join(dataDir, `all-non-submitted-${username}.json`);
-        await fs.writeFile(allNonSubmittedPath, JSON.stringify(nonSubmittedAssignments, null, 2));
-        console.log(` All non-submitted assignments saved to: ${allNonSubmittedPath}`);
+        // save
+        const allNonSubmittedFilename = `all-non-submitted-${username}.json`;
+        const { success: allNonSubSaved, url: allNonSubUrl, error: allNonSubError } = await saveJsonToSupabase(
+            allNonSubmittedFilename,
+            nonSubmittedAssignments
+        );
+        
+        if (!allNonSubSaved) {
+            console.error(`Error saving all non-submitted assignments to Supabase: ${allNonSubError}`);
+        }
+        console.log(` All non-submitted assignments saved to Supabase: ${allNonSubmittedFilename}`);
         
         await browser.close();
         
         res.json({
             success: true,
             nonSubmittedAssignments,
-            nonSubmittedFile: allNonSubmittedPath
+            supabaseUrl: allNonSubUrl
         });
         
     } catch (error) {

@@ -1,12 +1,12 @@
-import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { chromium } from 'playwright'; 
 import { loginToMoodle } from "../moodleBot.js";
 import ensureDataDir from './ensureDataDirectory.js';
 import { saveCookiesToSupabase } from './cookieManager.js';
+import { saveJsonToSupabase } from './supaBaseManager.js';
 
-// Environment setup
+// env
 const __dirname = path.dirname(fileURLToPath(import.meta.url)); 
 const dataDir = path.join(__dirname, 'data'); 
 
@@ -15,24 +15,24 @@ async function loginFetchController(req, res) {
     
     let browser;
     try {
-        await ensureDataDir();
+        await ensureDataDir(); 
         
         const { cookies, page } = await loginToMoodle(username, password);
         console.log('Login successful for:', username);
         
-        // Save cookies to Supabase instead of local file
+        // cookies to supa
         const { success, error: cookieError } = await saveCookiesToSupabase(username, cookies);
         if (!success) {
             throw new Error(`Failed to save cookies: ${cookieError}`);
         }
         console.log(`Cookies saved to Supabase for: ${username}`);
         
-        browser = await chromium.launch({ headless: false });
+        browser = await chromium.launch({ headless: true });
         const context = await browser.newContext();
         await context.addCookies(cookies);
         const coursePage = await context.newPage();
     
-        console.log('🔄 Navigating to courses page...');
+        console.log('Navigating to courses page...');
         await coursePage.goto('https://moodle.spit.ac.in/my/courses.php', { waitUntil: 'domcontentloaded' });
         await coursePage.waitForSelector('.course-info-container', { timeout: 10000 });
     
@@ -48,20 +48,26 @@ async function loginFetchController(req, res) {
           })
         );
     
-        console.log('📚 Courses fetched:', courses);
+        console.log('Courses fetched:', courses);
     
-        const coursesFilePath = path.join(dataDir, `courses-${username}.json`);
-        await fs.writeFile(coursesFilePath, JSON.stringify(courses, null, 2));
-        console.log(`💾 Courses data saved to: ${coursesFilePath}`);
+       
+        const coursesFilename = `courses-${username}.json`;
+        const { success: coursesSaved, url: coursesUrl, error: coursesError } = await saveJsonToSupabase(
+            coursesFilename,
+            courses
+        );
+        
+        if (!coursesSaved) {
+            console.error(`Error saving courses to Supabase: ${coursesError}`);
+        }
+        console.log(`💾 Courses data saved to Supabase: ${coursesFilename}`);
     
         await page.close();
         await coursePage.close();
     
-        //fetch
+        //fetch experiments
         const allExperiments = {};
         for (const course of courses) {
-          console.log(`Waiting 1000ms before processing course: ${course.title}`);
-          await new Promise(resolve => setTimeout(resolve, 10000));
     
           const page = await context.newPage();
           await page.goto(course.url, { waitUntil: 'domcontentloaded' });
@@ -94,14 +100,30 @@ async function loginFetchController(req, res) {
             experiments
           };
     
-          const courseExperimentsPath = path.join(dataDir, `experiments-${username}-course-${course.id}.json`);
-          await fs.writeFile(courseExperimentsPath, JSON.stringify(allExperiments[course.id], null, 2));
+          const courseExperimentsFilename = `experiments-${username}-course-${course.id}.json`;
+          const { success: expSaved, error: expError } = await saveJsonToSupabase(
+              courseExperimentsFilename,
+              allExperiments[course.id]
+          );
+          
+          if (!expSaved) {
+              console.error(`Error saving course experiments to Supabase: ${expError}`);
+          }
+          
           await page.close();
         }
     
-        const allExperimentsPath = path.join(dataDir, `all-experiments-${username}.json`);
-        await fs.writeFile(allExperimentsPath, JSON.stringify(allExperiments, null, 2));
-        console.log(` All experiments saved to: ${allExperimentsPath}`);
+        // all exp to supabase
+        const allExperimentsFilename = `all-experiments-${username}.json`;
+        const { success: allExpSaved, url: allExpUrl, error: allExpError } = await saveJsonToSupabase(
+            allExperimentsFilename,
+            allExperiments
+        );
+        
+        if (!allExpSaved) {
+            console.error(`Error saving all experiments to Supabase: ${allExpError}`);
+        }
+        console.log(` All experiments saved to Supabase: ${allExperimentsFilename}`);
     
         await browser.close();
     
@@ -109,8 +131,10 @@ async function loginFetchController(req, res) {
           success: true, 
           courses,
           experimentsByCourse: allExperiments,
-          coursesFile: coursesFilePath,
-          experimentsFile: allExperimentsPath
+          supabaseUrls: {
+            courses: coursesUrl,
+            allExperiments: allExpUrl
+          }
         });
     
     } catch (error) {

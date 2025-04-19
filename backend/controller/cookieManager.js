@@ -1,23 +1,15 @@
 import supabase from "../supabaseClient.js";
 
-/**
- * Saves user cookies to Supabase storage
- * @param {string} username - The username associated with the cookies
- * @param {Array} cookies - The cookies array to store
- * @returns {Promise<{success: boolean, error: string|null}>}
- */
 async function saveCookiesToSupabase(username, cookies) {
   try {
-    // Convert cookies to JSON string
     const cookiesString = JSON.stringify(cookies);
     const cookieFileName = `cookies-${username}.json`;
     
-    // Upload to Supabase storage
     const { data, error } = await supabase.storage
       .from("cookies")
       .upload(cookieFileName, cookiesString, {
         contentType: "application/json",
-        upsert: true // Overwrite if exists
+        upsert: true
       });
       
     if (error) throw error;
@@ -30,23 +22,17 @@ async function saveCookiesToSupabase(username, cookies) {
   }
 }
 
-/**
- * Retrieves user cookies from Supabase storage
- * @param {string} username - The username whose cookies to retrieve
- * @returns {Promise<{cookies: Array|null, error: string|null}>}
- */
 async function getCookiesFromSupabase(username) {
   try {
     const cookieFileName = `cookies-${username}.json`;
     
-    // Download cookies file from Supabase
     const { data, error } = await supabase.storage
       .from("cookies")
       .download(cookieFileName);
       
     if (error) throw error;
     
-    // Convert blob to text and parse as JSON
+    // blob to text and parse as json
     const cookiesText = await data.text();
     const cookies = JSON.parse(cookiesText);
     

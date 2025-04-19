@@ -11,19 +11,17 @@ async function downloadFileWithAuthentication(url, outputPath, username) {
 
   let browser;
   try {
-    // Retrieve cookies from Supabase instead of logging in each time
     const { cookies, error: cookieError } = await getCookiesFromSupabase(username);
     if (cookieError) {
       throw new Error(`Failed to retrieve cookies: ${cookieError}`);
     }
 
-    browser = await chromium.launch({ headless: false });
+    browser = await chromium.launch({ headless: true });
     const context = await browser.newContext({ acceptDownloads: true });
     await context.addCookies(cookies);
 
     const downloadPage = await context.newPage();
 
-    // Trigger file download (windows.href)
     const downloadPromise = downloadPage.waitForEvent('download');
     await downloadPage.evaluate((fileUrl) => {
       window.location.href = fileUrl;
