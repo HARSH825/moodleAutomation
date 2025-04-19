@@ -1,5 +1,4 @@
-// src/components/assignments/NonSubmittedList.jsx
-import React from 'react';
+import React, { useState } from 'react';
 import { useAppContext } from '../../context/AppContext';
 import { Card } from '../common/Card';
 import { Button } from '../common/Button';
@@ -14,10 +13,14 @@ const NonSubmittedList = () => {
     nonSubmittedAssignments, 
     setNonSubmittedAssignments, 
     setError,
-    setCurrentStep
+    setCurrentStep,
+    setGeneratedDocuments
   } = useAppContext();
 
+  const [currentAction, setCurrentAction] = useState(null);
+
   const handleCheckSubmissions = async () => {
+    setCurrentAction('checking');
     setIsLoading(true);
     
     try {
@@ -32,23 +35,29 @@ const NonSubmittedList = () => {
       setError(error.message);
     } finally {
       setIsLoading(false);
+      setCurrentAction(null);
     }
   };
 
   const handleGenerateDocuments = async () => {
+    setCurrentAction('generating');
     setIsLoading(true);
+    
     try {
       const { username, password, NAME, UID, key } = user;
       if (!username || !password || !NAME || !UID) {
         throw new Error('All fields are required');
       }
       
-      await api.generateDocuments({ username, password, NAME, UID, key });
+      const data = await api.generateDocuments({ username, password, NAME, UID, key });
+      setGeneratedDocuments(data.generatedDocuments || []);
+      //navigate
       setCurrentStep(3);
     } catch (error) {
       setError(error.message);
     } finally {
       setIsLoading(false);
+      setCurrentAction(null);
     }
   };
 
@@ -56,70 +65,71 @@ const NonSubmittedList = () => {
     return (
       <div className="flex flex-col items-center">
         <Loader size="lg" />
-        <p className="mt-4 text-gray-600">Checking for non-submitted assignments...</p>
+        <p className="mt-4 text-gray-600">
+          {currentAction === 'generating' 
+            ? "Generating documents..." 
+            : "Checking for non-submitted assignments..."}
+        </p>
       </div>
     );
   }
 
-  const hasNonSubmitted = Object.keys(nonSubmittedAssignments).length > 0;
-
   return (
     <div className="space-y-6">
-      {!hasNonSubmitted && (
-        <Card className="text-center p-6">
-          <Button onClick={handleCheckSubmissions}>
-            Check Non-Submitted Assignments
+      <div className="flex justify-between items-center mb-6">
+        <h2 className="text-2xl font-semibold text-gray-800">Non-Submitted Assignments</h2>
+        <div className="space-x-3">
+          <Button onClick={handleCheckSubmissions} variant="secondary">
+            Check Non-Submitted
           </Button>
+          <Button onClick={handleGenerateDocuments} variant="primary">
+            Generate Documents
+          </Button>
+        </div>
+      </div>
+
+      {(!nonSubmittedAssignments || Object.keys(nonSubmittedAssignments).length === 0) ? (
+        <Card className="text-center p-6">
+          <p className="text-gray-600 mb-4">Click "Check Non-Submitted" to find assignments that need attention.</p>
         </Card>
-      )}
-
-      {hasNonSubmitted && (
-        <>
-          <div className="flex justify-between items-center">
-            <h2 className="text-2xl font-semibold text-gray-800">Non-Submitted Assignments</h2>
-            <Button onClick={handleGenerateDocuments} variant="primary">
-              Generate Documents
-            </Button>
-          </div>
-
-          {Object.entries(nonSubmittedAssignments).map(([courseId, courseData]) => (
-            <Card key={courseId} title={courseData.courseTitle}>
-              <div className="space-y-4">
-                <div className="flex justify-between pb-2 border-b">
-                  <span className="font-medium text-gray-700">Course ID: {courseId}</span>
-                  <span className="bg-amber-100 text-amber-800 py-1 px-3 rounded-full text-sm">
-                    {courseData.nonSubmittedCount} Non-Submitted
-                  </span>
-                </div>
-                
-                <ul className="divide-y">
-                  {courseData.assignments.map((assignment) => (
-                    <li key={assignment.id} className="py-3">
-                      <div className="flex flex-col sm:flex-row sm:justify-between">
-                        <div>
-                          <h4 className="font-medium text-gray-900">{assignment.title}</h4>
-                          <p className="text-sm text-gray-500">
-                            Status: {assignment.submissionStatus}
-                          </p>
-                        </div>
-                        <div className="mt-2 sm:mt-0">
-                          <a 
-                            href={assignment.url} 
-                            target="_blank" 
-                            rel="noopener noreferrer"
-                            className="text-sm text-teal-600 hover:text-teal-800"
-                          >
-                            View on Moodle
-                          </a>
-                        </div>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
+      ) : (
+        Object.entries(nonSubmittedAssignments).map(([courseId, courseData]) => (
+          <Card key={courseId} title={courseData.courseTitle}>
+            <div className="space-y-4">
+              <div className="flex justify-between pb-2 border-b">
+                <span className="font-medium text-gray-700">Course ID: {courseId}</span>
+                <span className="bg-amber-100 text-amber-800 py-1 px-3 rounded-full text-sm">
+                  {courseData.nonSubmittedCount} Non-Submitted
+                </span>
               </div>
-            </Card>
-          ))}
-        </>
+              
+              <ul className="divide-y">
+                {courseData.assignments.map((assignment) => (
+                  <li key={assignment.id} className="py-3">
+                    <div className="flex flex-col sm:flex-row sm:justify-between">
+                      <div>
+                        <h4 className="font-medium text-gray-900">{assignment.title}</h4>
+                        <p className="text-sm text-gray-500">
+                          Status: {assignment.submissionStatus}
+                        </p>
+                      </div>
+                      <div className="mt-2 sm:mt-0">
+                        <a 
+                          href={assignment.url} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-sm text-teal-600 hover:text-teal-800"
+                        >
+                          View on Moodle
+                        </a>
+                      </div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </Card>
+        ))
       )}
     </div>
   );
