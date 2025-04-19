@@ -13,7 +13,7 @@ const Dashboard = () => {
     <div className="min-h-screen bg-gray-50">
       <header className="bg-teal-700 text-white shadow-md">
         <div className="container mx-auto px-4 py-6">
-          <h1 className="text-3xl font-bold">Moodle Assignment Manager</h1>
+          <h1 className="text-3xl font-bold">Moodle Assignment Automation Tool</h1>
           <p className="mt-1 text-teal-100">Automate your assignment submissions</p>
         </div>
       </header>
@@ -88,7 +88,7 @@ const Dashboard = () => {
 
       <footer className="bg-gray-100 border-t">
         <div className="container mx-auto px-4 py-4 text-center text-gray-600 text-sm">
-          &copy; {new Date().getFullYear()} Moodle Assignment Manager. All rights reserved.
+          &copy; {new Date().getFullYear()} Moodle Assignment Automation .
         </div>
       </footer>
     </div>
