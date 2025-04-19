@@ -66,7 +66,7 @@ const GeneratedDocsList = () => {
     return (
       <div className="flex flex-col items-center">
         <Loader size="lg" />
-        <p className="mt-4 text-gray-600">Fetching generated documents...</p>
+        <p className="mt-4 text-gray-600">Fetching generated documents...Please wait , this process might take a few minutes</p>
       </div>
     );
   }

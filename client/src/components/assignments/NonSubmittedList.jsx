@@ -67,8 +67,8 @@ const NonSubmittedList = () => {
         <Loader size="lg" />
         <p className="mt-4 text-gray-600">
           {currentAction === 'generating' 
-            ? "Generating documents..." 
-            : "Checking for non-submitted assignments..."}
+            ? "Generating documents...Please Wait, this process might take a few minutes" 
+            : "Checking for non-submitted assignments...Please Wait, this process might take a few minutes"}
         </p>
       </div>
     );
