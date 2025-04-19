@@ -16,9 +16,9 @@ export function AppProvider({ children }) {
   const [nonSubmittedAssignments, setNonSubmittedAssignments] = useState({});
   const [generatedDocuments, setGeneratedDocuments] = useState([]);
   const [error, setError] = useState(null);
-  const [currentStep, setCurrentStep] = useState(1); // 1: Form, 2: Non-submitted, 3: Generated
+  const [currentStep, setCurrentStep] = useState(1); // 1:Form, 2:Nonsubmitted, 3:Generated
   
-  // Reset error state
+  
   const clearError = () => setError(null);
 
   return (

@@ -77,7 +77,7 @@ const Dashboard = () => {
         {isLoading && currentStep === 1 && (
           <div className="flex flex-col items-center py-12">
             <Loader size="lg" />
-            <p className="mt-4 text-gray-600">Logging in and fetching courses...</p>
+            <p className="mt-4 text-gray-600">Logging in and fetching courses...Please wait, this process might take a few minutes</p>
           </div>
         )}
 
