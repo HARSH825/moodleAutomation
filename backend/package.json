@@ -12,7 +12,9 @@
   "license": "ISC",
   "type": "module",
   "dependencies": {
+    "@google-cloud/storage": "^7.16.0",
     "@google/generative-ai": "^0.24.0",
+    "@supabase/supabase-js": "^2.49.4",
     "axios": "^1.8.4",
     "cors": "^2.8.5",
     "docx": "^9.3.0",
