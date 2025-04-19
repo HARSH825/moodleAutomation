@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAppContext } from '../../context/AppContext';
 import { Card } from '../common/Card';
 import { Button } from '../common/Button';
@@ -15,25 +15,52 @@ const GeneratedDocsList = () => {
     generatedDocuments,
     setGeneratedDocuments
   } = useAppContext();
+  
+  const [isFetching, setIsFetching] = useState(false);
 
   useEffect(() => {
+    if (generatedDocuments.length > 0 || isFetching) return;
+    
     const fetchGeneratedDocs = async () => {
-      if (generatedDocuments.length === 0) {
-        setIsLoading(true);
-        try {
-          const { username, password, NAME, UID, key } = user;
-          const data = await api.generateDocuments({ username, password, NAME, UID, key });
-          setGeneratedDocuments(data.generatedDocuments);
-        } catch (error) {
-          setError(error.message);
-        } finally {
-          setIsLoading(false);
-        }
+      setIsFetching(true);
+      setIsLoading(true);
+      
+      try {
+        const { username, password, NAME, UID, key } = user;
+        const data = await api.generateDocuments({ username, password, NAME, UID, key });
+        setGeneratedDocuments(data.generatedDocuments || []);
+      } catch (error) {
+        setError(error.message);
+      } finally {
+        setIsLoading(false);
+        setIsFetching(false);
       }
     };
 
     fetchGeneratedDocs();
+    
+    return () => {
+      if (isFetching) setIsFetching(false);
+    };
   }, []);
+
+  const handleManualRefresh = async () => {
+    if (isFetching) return; 
+    
+    setIsFetching(true);
+    setIsLoading(true);
+    
+    try {
+      const { username, password, NAME, UID, key } = user;
+      const data = await api.generateDocuments({ username, password, NAME, UID, key });
+      setGeneratedDocuments(data.generatedDocuments || []);
+    } catch (error) {
+      setError(error.message);
+    } finally {
+      setIsLoading(false);
+      setIsFetching(false);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -44,7 +71,7 @@ const GeneratedDocsList = () => {
     );
   }
 
-  // Group documents by courseId
+  // by courseId
   const docsByCourse = generatedDocuments.reduce((acc, doc) => {
     if (!acc[doc.courseId]) {
       acc[doc.courseId] = {
@@ -58,7 +85,16 @@ const GeneratedDocsList = () => {
 
   return (
     <div className="space-y-6">
-      <h2 className="text-2xl font-semibold text-gray-800">Generated Documents</h2>
+      <div className="flex justify-between items-center mb-6">
+        <h2 className="text-2xl font-semibold text-gray-800">Generated Documents</h2>
+        <Button 
+          onClick={handleManualRefresh} 
+          variant="secondary"
+          disabled={isFetching}
+        >
+          {isFetching ? 'Refreshing...' : 'Refresh Documents'}
+        </Button>
+      </div>
       
       {Object.entries(docsByCourse).length === 0 ? (
         <Card className="text-center p-6">
