@@ -33,6 +33,8 @@ const LoginForm = () => {
       
       const data = await api.loginFetch({ username, password });
       setCourses(data.courses);
+      
+      // After successful login, go directly to the non-submitted page
       setCurrentStep(2);
     } catch (error) {
       setError(error.message);
