@@ -1,8 +1,9 @@
 import fs from 'fs';
 import path from 'path';
-import { loginToMoodle } from '../moodleBot.js';
+import { chromium } from 'playwright';
+import { getCookiesFromSupabase } from './cookieManager.js';
 
-async function downloadFileWithAuthentication(url, outputPath, username, password) {
+async function downloadFileWithAuthentication(url, outputPath, username) {
   const dir = path.dirname(outputPath);
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
@@ -10,15 +11,19 @@ async function downloadFileWithAuthentication(url, outputPath, username, passwor
 
   let browser;
   try {
-    const { page, cookies, browser: loggedInBrowser } = await loginToMoodle(username, password);
-    browser = loggedInBrowser;
+    // Retrieve cookies from Supabase instead of logging in each time
+    const { cookies, error: cookieError } = await getCookiesFromSupabase(username);
+    if (cookieError) {
+      throw new Error(`Failed to retrieve cookies: ${cookieError}`);
+    }
 
+    browser = await chromium.launch({ headless: false });
     const context = await browser.newContext({ acceptDownloads: true });
     await context.addCookies(cookies);
 
     const downloadPage = await context.newPage();
 
-    //  trigger file download (windows.href)
+    // Trigger file download (windows.href)
     const downloadPromise = downloadPage.waitForEvent('download');
     await downloadPage.evaluate((fileUrl) => {
       window.location.href = fileUrl;

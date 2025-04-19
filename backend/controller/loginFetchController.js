@@ -4,23 +4,28 @@ import { fileURLToPath } from 'url';
 import { chromium } from 'playwright'; 
 import { loginToMoodle } from "../moodleBot.js";
 import ensureDataDir from './ensureDataDirectory.js';
-//  environment
+import { saveCookiesToSupabase } from './cookieManager.js';
 
+// Environment setup
 const __dirname = path.dirname(fileURLToPath(import.meta.url)); 
 const dataDir = path.join(__dirname, 'data'); 
 
- async function loginFetchController(req,res){
+async function loginFetchController(req, res) {
     const { username, password } = req.body;
     
-      let browser;
-      try {
+    let browser;
+    try {
         await ensureDataDir();
         
         const { cookies, page } = await loginToMoodle(username, password);
         console.log('Login successful for:', username);
         
-        await fs.writeFile(path.join(dataDir, `cookies-${username}.json`), JSON.stringify(cookies, null, 2));
-        console.log(`Cookies saved to: cookies-${username}.json`);
+        // Save cookies to Supabase instead of local file
+        const { success, error: cookieError } = await saveCookiesToSupabase(username, cookies);
+        if (!success) {
+            throw new Error(`Failed to save cookies: ${cookieError}`);
+        }
+        console.log(`Cookies saved to Supabase for: ${username}`);
         
         browser = await chromium.launch({ headless: false });
         const context = await browser.newContext();
@@ -108,11 +113,11 @@ const dataDir = path.join(__dirname, 'data');
           experimentsFile: allExperimentsPath
         });
     
-      } catch (error) {
+    } catch (error) {
         console.error(' Error in /loginFetch:', error.message);
         if (browser) await browser.close();
         res.status(500).json({ success: false, error: error.message });
-      }
+    }
 }
 
-export default loginFetchController
+export default loginFetchController;
