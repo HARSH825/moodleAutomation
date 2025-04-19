@@ -5,6 +5,7 @@ import mammoth from 'mammoth';
 import generateAssignmentContent from './genContent.js';
 import createDocumentFromContent from './createDocFromContent.js';
 import downloadFile from './downloadFile.js'; 
+import { url } from 'inspector/promises';
 
 //  environment
 const __dirname = path.dirname(fileURLToPath(import.meta.url)); //overall
@@ -51,7 +52,7 @@ async function genDocController(req,res){
           .replace(/_+/g, '_')
           .substring(0, 50);
         
-        const docPath = path.join(courseDirPath, `${safeTitle}.docx`);
+        // const docPath = path.join(courseDirPath, `${safeTitle}.docx`);
         
         try {
           //if  files exist ,download them
@@ -100,8 +101,8 @@ async function genDocController(req,res){
           );
           
           // create doc
-          console.log(` Creating document: ${docPath}`);
-          await createDocumentFromContent(content, assignment, docPath,NAME,UID);
+          console.log(` Creating document: ${assignment.title}`);
+          const url = await createDocumentFromContent(content, assignment,NAME,UID);
           
           // clean temp downloaded files
           if (downloadedFilePath) {
@@ -114,14 +115,14 @@ async function genDocController(req,res){
           
           results[courseId].documents.push({
             title: assignment.title,
-            path: docPath
+            url: url
           });
           
           generatedDocs.push({
             courseId,
             courseTitle: courseData.courseTitle,
             title: assignment.title,
-            path: docPath
+            url: url
           });
           
           console.log(` Document created for: ${assignment.title}`);
@@ -129,7 +130,8 @@ async function genDocController(req,res){
           console.error(` Error processing assignment: ${assignmentError.message}`);
           results[courseId].documents.push({
             title: assignment.title,
-            error: assignmentError.message
+            error: assignmentError.message,
+            url: url
           });
         }
       }
