@@ -34,7 +34,7 @@ async function loginFetchController(req, res) {
     
         console.log('Navigating to courses page...');
         await coursePage.goto('https://moodle.spit.ac.in/my/courses.php', { waitUntil: 'domcontentloaded' });
-        await coursePage.waitForSelector('.course-info-container', { timeout: 10000 });
+        await coursePage.waitForSelector('.course-info-container', { timeout: 1200000 });
     
         const courses = await coursePage.$$eval('.course-info-container', nodes =>
           nodes.map(node => {
@@ -71,7 +71,7 @@ async function loginFetchController(req, res) {
     
           const page = await context.newPage();
           await page.goto(course.url, { waitUntil: 'domcontentloaded' });
-          await page.waitForSelector('.course-content', { timeout: 20000 });
+          await page.waitForSelector('.course-content', { timeout: 120000 });
     
           const experiments = await page.$$eval('div.activityname a.aalink', links => 
             links.map(link => {
