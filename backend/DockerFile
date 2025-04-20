@@ -1,10 +1,10 @@
 # Use the official Playwright image with all dependencies
-FROM mcr.microsoft.com/playwright/node:lts
+FROM mcr.microsoft.com/playwright:v1.43.1-focal
 
 # Set working directory
 WORKDIR /app
 
-# Copy files
+# Copy all files
 COPY . .
 
 # Install dependencies
@@ -13,7 +13,8 @@ RUN npm install
 # Install Playwright browsers
 RUN npx playwright install --with-deps
 
-# Expose the port your app runs on
+# Expose backend port (adjust if needed)
 EXPOSE 3000
 
-CMD ["npm", "start"]
+# Start the server
+CMD ["node", "server.js"]
