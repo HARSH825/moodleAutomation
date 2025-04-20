@@ -1,4 +1,4 @@
-const API_BASE_URL = 'https://moodle-backend-latest.onrender.com/';
+const API_BASE_URL = 'https://moodle-backend-latest.onrender.com';
 
 export const api = {
   async loginFetch(userData) {
