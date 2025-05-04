@@ -6,34 +6,152 @@ import { getCookiesFromSupabase } from './cookieManager.js';
 import { saveJsonToSupabase, getJsonFromSupabase } from './supaBaseManager.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url)); 
-const dataDir = path.join(__dirname, 'data'); 
+const dataDir = path.join(__dirname, 'data');
+
+const CONCURRENT_ASSIGNMENTS = 5; 
+const PAGE_TIMEOUT = 15000; 
+
+async function checkSubmissionStatus(page, assignment) {
+    console.log(`Checking assignment: ${assignment.title}`);
+    
+    try {
+        await page.goto(assignment.url, { waitUntil: 'domcontentloaded', timeout: PAGE_TIMEOUT });
+        
+        const expandButton = await page.$('.collapsible-actions .collapseexpand');
+        if (expandButton) {
+            await expandButton.click();
+            await page.waitForTimeout(500); 
+        }
+        
+        const submissionStatus = await page.evaluate(() => {
+            let status = null;
+            
+            const rows = document.querySelectorAll('.submissionstatustable tr');
+            for (const row of rows) {
+                const cells = row.querySelectorAll('td');
+                if (cells.length >= 2 && cells[0]?.textContent?.trim() === 'Submission status') {
+                    return cells[1]?.textContent?.trim();
+                }
+            }
+            
+            const tables = document.querySelectorAll('table.generaltable');
+            for (const table of tables) {
+                const rows = table.querySelectorAll('tr');
+                for (const row of rows) {
+                    const cells = row.querySelectorAll('td, th');
+                    if (cells.length >= 2 && cells[0]?.textContent?.trim() === 'Submission status') {
+                        return cells[1]?.textContent?.trim();
+                    }
+                }
+            }
+            
+            const submissionText = Array.from(document.querySelectorAll('*'))
+                .find(element => 
+                    element.textContent?.includes('Submission status') &&
+                    (element.nextElementSibling?.textContent?.includes('submitted') ||
+                    element.nextElementSibling?.textContent?.includes('No submission'))
+                );
+            
+            return submissionText?.nextElementSibling?.textContent?.trim() || null;
+        });
+        
+        const allFiles = await page.evaluate(() => {
+            const fileElements = Array.from(document.querySelectorAll('.fileuploadsubmission a'));
+            
+            const attachmentElements = Array.from(document.querySelectorAll('.mod-assign-intro-attachments a'));
+            //plugin files idhr
+            const pluginFiles = Array.from(document.querySelectorAll('a[href*="pluginfile.php"]'))
+                .filter(el => el.href.includes('.doc') || el.href.includes('.pdf') || el.href.includes('.zip'));
+            
+            // combine
+            return [...fileElements, ...attachmentElements, ...pluginFiles].map(el => ({
+                fileName: el.textContent.trim(),
+                fileUrl: el.href
+            }));
+        });
+        
+        console.log(`Submission status: "${submissionStatus || 'Not found'}" with ${allFiles.length} files`);
+        
+        const isSubmitted = submissionStatus && 
+            (submissionStatus.includes('Submitted for grading') || 
+             submissionStatus.includes('submitted') &&
+             !submissionStatus.includes('No submission'));
+        
+        if (!isSubmitted && isSubmitted !== null) {
+            console.log(`Assignment not submitted: ${assignment.title}`);
+            return {
+                isSubmitted: false,
+                result: {
+                    ...assignment,
+                    submissionStatus: submissionStatus || 'Unknown',
+                    relatedFiles: allFiles.length > 0 ? allFiles : null
+                }
+            };
+        } else {
+            console.log(`Assignment submitted: ${assignment.title}`);
+            return { isSubmitted: true };
+        }
+    } catch (error) {
+        console.error(` Error checking assignment ${assignment.title}:`, error.message);
+        return {
+            isSubmitted: false,
+            result: {
+                ...assignment,
+                submissionStatus: 'Error checking status',
+                error: error.message
+            }
+        };
+    }
+}
+
+async function processInBatches(items, batchSize, processFunction) {
+    const results = [];
+    for (let i = 0; i < items.length; i += batchSize) {
+        const batch = items.slice(i, i + batchSize);
+        const batchResults = await Promise.all(batch.map(processFunction));
+        results.push(...batchResults);
+    }
+    return results;
+}
 
 async function checkSubController(req, res) {
     const { username } = req.body;
-      
     let browser;
+    
     try {
-        await ensureDataDir(); //for fallback
+        await ensureDataDir(); 
         
-        // cookies
-        const { cookies, error: cookieError } = await getCookiesFromSupabase(username);
-        if (cookieError) {
-            throw new Error(`Failed to retrieve cookies: ${cookieError}`);
+        const [cookiesResult, experimentsResult] = await Promise.all([
+            getCookiesFromSupabase(username),
+            getJsonFromSupabase(`all-experiments-${username}.json`)
+        ]);
+        
+        if (cookiesResult.error) {
+            throw new Error(`Failed to retrieve cookies: ${cookiesResult.error}`);
         }
         
-        // all exp
-        const allExperimentsFilename = `all-experiments-${username}.json`;
-        const { data: allExperiments, error: expError } = await getJsonFromSupabase(allExperimentsFilename);
-        
-        if (expError) {
-            throw new Error(`Failed to retrieve experiments: ${expError}`);
+        if (experimentsResult.error) {
+            throw new Error(`Failed to retrieve experiments: ${experimentsResult.error}`);
         }
         
-        browser = await chromium.launch({ headless: true });
-        const context = await browser.newContext();
+        const cookies = cookiesResult.cookies;
+        const allExperiments = experimentsResult.data;
+        
+        browser = await chromium.launch({ 
+            headless: false,
+            args: ['--disable-gpu', '--disable-dev-shm-usage', '--no-sandbox']
+        });
+        
+        const context = await browser.newContext({
+            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            viewport: { width: 1280, height: 720 },
+            ignoreHTTPSErrors: true
+        });
+        
         await context.addCookies(cookies);
         
         const nonSubmittedAssignments = {};
+        const savePromises = [];
         
         for (const courseId in allExperiments) {
             const courseData = allExperiments[courseId];
@@ -42,153 +160,26 @@ async function checkSubController(req, res) {
             
             console.log(` Checking ${assignments.length} assignments for course: ${courseTitle}`);
             
-            const nonSubmitted = [];
+            const pagePool = await Promise.all(
+                Array(Math.min(CONCURRENT_ASSIGNMENTS, assignments.length))
+                    .fill()
+                    .map(() => context.newPage())
+            );
             
-            for (const assignment of assignments) {
-                console.log(`  ⏳ Checking assignment: ${assignment.title}`);
-                //delay
-                // await new Promise(resolve => setTimeout(resolve, 2000));
+            const nonSubmitted = [];
+            let pageIndex = 0;
+            
+            await processInBatches(assignments, pagePool.length, async (assignment) => {
+                const page = pagePool[pageIndex % pagePool.length];
+                pageIndex++;
                 
-                const page = await context.newPage();
-                try {
-                    await page.goto(assignment.url, { waitUntil: 'networkidle', timeout: 30000 });
-                    
-                    // if req,check
-                    const expandButton = await page.$('.collapsible-actions .collapseexpand');
-                    if (expandButton) {
-                        await expandButton.click();
-                        await page.waitForTimeout(1000); //for the content to expand
-                    }
-                    
-                    let submissionStatus = null;
-                    
-                    // first selector 
-                    submissionStatus = await page.evaluate(() => {
-                        const rows = document.querySelectorAll('.submissionstatustable tr');
-                        for (const row of rows) {
-                            const cells = row.querySelectorAll('td');
-                            if (cells.length >= 2) {
-                                const firstCell = cells[0]?.textContent?.trim();
-                                if (firstCell === 'Submission status') {
-                                    return cells[1]?.textContent?.trim();
-                                }
-                            }
-                        }
-                        return null;
-                    });
-                    
-                    // broaderselector
-                    if (!submissionStatus) {
-                        submissionStatus = await page.evaluate(() => {
-                            const tables = document.querySelectorAll('table.generaltable');
-                            for (const table of tables) {
-                                const rows = table.querySelectorAll('tr');
-                                for (const row of rows) {
-                                    const cells = row.querySelectorAll('td, th');
-                                    if (cells.length >= 2) {
-                                        const firstCell = cells[0]?.textContent?.trim();
-                                        if (firstCell === 'Submission status') {
-                                            return cells[1]?.textContent?.trim();
-                                        }
-                                    }
-                                }
-                            }
-                            return null;
-                        });
-                    }
-                    
-                    // general selector
-                    if (!submissionStatus) {
-                        submissionStatus = await page.evaluate(() => {
-                            const submissionText = Array.from(document.querySelectorAll('*'))
-                                .find(element => 
-                                    element.textContent?.includes('Submission status') &&
-                                    (element.nextElementSibling?.textContent?.includes('submitted') ||
-                                    element.nextElementSibling?.textContent?.includes('No submission'))
-                                );
-                            
-                            return submissionText?.nextElementSibling?.textContent?.trim() || null;
-                        });
-                    }
-                    
-                    console.log(`Submission status: "${submissionStatus || 'Not found'}"`);
-                    
-                    // file URLS
-                    const relatedFiles = await page.evaluate(() => {
-                        const fileElements = document.querySelectorAll('.fileuploadsubmission a');
-                        return Array.from(fileElements).map(el => {
-                            return {
-                                fileName: el.textContent.trim(),
-                                fileUrl: el.href
-                            };
-                        });
-                    });
-                    
-                    // alternative selectors , if no fles
-                    let alternativeFiles = [];
-                    if (relatedFiles.length === 0) {
-                        alternativeFiles = await page.evaluate(() => {
-                            const attachmentElements = document.querySelectorAll('.mod-assign-intro-attachments a');
-                            const results = Array.from(attachmentElements).map(el => {
-                                return {
-                                    fileName: el.textContent.trim(),
-                                    fileUrl: el.href
-                                };
-                            });
-                            
-                            // still no files
-                            if (results.length === 0) {
-                                const allLinks = document.querySelectorAll('a[href*="pluginfile.php"]');
-                                return Array.from(allLinks)
-                                    .filter(el => el.href.includes('.doc') || el.href.includes('.pdf') || el.href.includes('.zip'))
-                                    .map(el => {
-                                        return {
-                                            fileName: el.textContent.trim(),
-                                            fileUrl: el.href
-                                        };
-                                    });
-                            }
-                            
-                            return results;
-                        });
-                    }
-                    
-                    const allFiles = [...relatedFiles, ...alternativeFiles];
-                    console.log(` Found ${allFiles.length} related files`);
-                    
-                    //subm status
-                    const isSubmitted = submissionStatus && 
-                                       (submissionStatus.includes('Submitted for grading') || 
-                                        submissionStatus.includes('submitted') &&
-                                        !submissionStatus.includes('No submission'));
-                    
-                    if (!isSubmitted) {
-                        nonSubmitted.push({
-                            ...assignment,
-                            submissionStatus: submissionStatus || 'Unknown',
-                            relatedFiles: allFiles.length > 0 ? allFiles : null
-                        });
-                        console.log(`Assignment not submitted: ${assignment.title}`);
-                        
-                        if (allFiles.length > 0) {
-                            console.log(` Related files found: ${allFiles.map(f => f.fileName).join(', ')}`);
-                        }
-                    } else {
-                        console.log(`Assignment submitted: ${assignment.title}`);
-                    }
-                    
-                } catch (error) {
-                    console.error(` Error checking assignment ${assignment.title}:`, error.message);
-                    // if couldnt determine status
-                    nonSubmitted.push({
-                        ...assignment,
-                        submissionStatus: 'Error checking status',
-                        error: error.message
-                    });
+                const result = await checkSubmissionStatus(page, assignment);
+                if (!result.isSubmitted) {
+                    nonSubmitted.push(result.result);
                 }
-                
-                await page.close();
-            }
+            });
+            
+            await Promise.all(pagePool.map(page => page.close()));
             
             nonSubmittedAssignments[courseId] = {
                 courseTitle,
@@ -197,20 +188,18 @@ async function checkSubController(req, res) {
                 assignments: nonSubmitted
             };
             
-            // save non-sub to supa
             const nonSubmittedFilename = `non-submitted-${username}-course-${courseId}.json`;
-            const { success: nonSubSaved, error: nonSubError } = await saveJsonToSupabase(
+            const savePromise = saveJsonToSupabase(
                 nonSubmittedFilename, 
                 nonSubmittedAssignments[courseId]
             );
             
-            if (!nonSubSaved) {
-                console.error(`Error saving non-submitted assignments to Supabase: ${nonSubError}`);
-            }
-            console.log(` Non-submitted assignments saved to Supabase: ${nonSubmittedFilename}`);
+            savePromises.push(savePromise);
+            console.log(` Non-submitted assignments saving to Supabase: ${nonSubmittedFilename}`);
         }
         
-        // save
+        await Promise.all(savePromises);
+        //save
         const allNonSubmittedFilename = `all-non-submitted-${username}.json`;
         const { success: allNonSubSaved, url: allNonSubUrl, error: allNonSubError } = await saveJsonToSupabase(
             allNonSubmittedFilename,
@@ -220,7 +209,6 @@ async function checkSubController(req, res) {
         if (!allNonSubSaved) {
             console.error(`Error saving all non-submitted assignments to Supabase: ${allNonSubError}`);
         }
-        console.log(` All non-submitted assignments saved to Supabase: ${allNonSubmittedFilename}`);
         
         await browser.close();
         

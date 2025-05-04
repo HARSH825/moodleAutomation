@@ -33,7 +33,6 @@ async function saveJsonToSupabase(filename, data, bucket = "assignmentsjson") {
 
 async function getJsonFromSupabase(filename, bucket = "assignmentsjson") {
   try {
-    // Download JSON file
     const { data, error } = await supabase.storage
       .from(bucket)
       .download(filename);

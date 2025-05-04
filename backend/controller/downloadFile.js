@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
-import { chromium } from 'playwright';
 import { getCookiesFromSupabase } from './cookieManager.js';
+import { getBrowser, releaseBrowser } from '../utils/browserManager.js';
 
 async function downloadFileWithAuthentication(url, outputPath, username) {
   const dir = path.dirname(outputPath);
@@ -16,31 +16,47 @@ async function downloadFileWithAuthentication(url, outputPath, username) {
       throw new Error(`Failed to retrieve cookies: ${cookieError}`);
     }
 
-    browser = await chromium.launch({ headless: true });
-    const context = await browser.newContext({ acceptDownloads: true });
+    browser = await getBrowser();
+    const context = await browser.newContext({ 
+      acceptDownloads: true,
+      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36',
+    });
     await context.addCookies(cookies);
 
     const downloadPage = await context.newPage();
 
-    const downloadPromise = downloadPage.waitForEvent('download');
-    await downloadPage.evaluate((fileUrl) => {
-      window.location.href = fileUrl;
-    }, url);
+    try {
+      const downloadPromise = downloadPage.waitForEvent('download', { timeout: 60000 });
+      await downloadPage.evaluate((fileUrl) => {
+        window.location.href = fileUrl;
+      }, url);
 
-    const download = await downloadPromise;
-    console.log(`Download started: ${download.suggestedFilename()}`);
+      const download = await downloadPromise;
+      console.log(`Download started: ${download.suggestedFilename()}`);
 
-    await download.saveAs(outputPath);
-    console.log(`File downloaded successfully to: ${outputPath}`);
-
-    await downloadPage.close();
-    await context.close();
+      const savePromise = download.saveAs(outputPath);
+      await Promise.race([
+        savePromise,
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('File save timeout')), 60000)
+        )
+      ]);
+      
+      console.log(`File downloaded successfully to: ${outputPath}`);
+    } finally {
+      await downloadPage.close();
+      await context.close();
+      await releaseBrowser(browser);
+      browser = null;
+    }
+    
     return outputPath;
   } catch (error) {
     console.error(`Error downloading file: ${error.message}`);
+    if (browser) {
+      await releaseBrowser(browser);
+    }
     return null;
-  } finally {
-    if (browser) await browser.close();
   }
 }
 
