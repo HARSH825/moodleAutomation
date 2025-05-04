@@ -1,4 +1,3 @@
-// src/pages/Dashboard.jsx
 import React from 'react';
 import { useAppContext } from '../context/AppContext';
 import LoginForm from '../components/forms/LoginForm';
@@ -88,7 +87,8 @@ const Dashboard = () => {
 
       <footer className="bg-gray-100 border-t">
         <div className="container mx-auto px-4 py-4 text-center text-gray-600 text-sm">
-          &copy; {new Date().getFullYear()} Moodle Assignment Automation .
+           {/* {new Date().getFullYear()}  */}
+           Moodle Assignment Automation .
         </div>
       </footer>
     </div>
