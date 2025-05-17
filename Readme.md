@@ -1,5 +1,7 @@
 #  Moodle Assignment Automation Tool
 
+Watch in action : https://www.linkedin.com/posts/harsh-chhallani1937_moodle-activity-7324898466055311360-ffHf?utm_source=social_share_send&utm_medium=member_desktop_web&rcm=ACoAACgrDisBzNL58sLyNjgND7meaJoN3iWtVVk
+
 This project automates the process of fetching assignments from Moodle, generating assignment documentation, and assisting students in reviewing it — all using **browser automation** via **Playwright**. It's designed to save students time and effort by mimicking real user behavior on Moodle.
 ---
 
